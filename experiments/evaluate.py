@@ -8,9 +8,9 @@ from pathlib import Path
 
 import torch
 
-from eeg_dataset import EEGWindowDataset
-from experiment_utils import evaluate, make_loader, read_manifest
-from model import EEGRateDistortionAE
+from utils.eeg_dataset import EEGWindowDataset
+from utils.experiment_utils import evaluate, make_loader, read_manifest
+from models.temporal_model import build_rate_model
 
 
 def main() -> None:
@@ -38,7 +38,7 @@ def main() -> None:
                                config["channels"], config["sfreq"],
                                eval_start_sec=config.get("eval_start_sec", 0.0))
     loader = make_loader(dataset, args.batch_size, args.num_workers, False)
-    model = EEGRateDistortionAE(**checkpoint["model_config"]).to(device)
+    model = build_rate_model(checkpoint["model_config"]).to(device)
     model.load_state_dict(checkpoint["model"])
     result = {"split": args.split, "checkpoint": str(args.checkpoint),
               "split_group_column": config["group_col"],

@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
 OUT = RUNS / "study_report"
 BANDS = ("delta", "alpha", "low_beta", "beta")

@@ -7,7 +7,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from spatial_data import write_json
+from utils.spatial_data import write_json
 
 
 def main():

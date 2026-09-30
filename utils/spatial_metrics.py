@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from band_metrics import BANDS, _window_components
-from spatial_data import write_json
+from utils.band_metrics import BANDS, _window_components
+from utils.spatial_data import write_json
 
 
 class Metrics:

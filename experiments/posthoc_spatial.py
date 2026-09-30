@@ -12,10 +12,10 @@ import numpy as np
 import pandas as pd
 import torch
 from sklearn.cluster import MiniBatchKMeans
-from spatial_data import SpatialDataset, loader, write_json, fingerprint
-from spatial_model import SpatialFactorAE
-from spatial_metrics import Metrics, sequence_stats, paired_bootstrap
-from train_spatial import load_checkpoint, amp_context, runtime
+from utils.spatial_data import SpatialDataset, loader, write_json, fingerprint
+from models.spatial_model import SpatialFactorAE
+from utils.spatial_metrics import Metrics, sequence_stats, paired_bootstrap
+from utils.spatial_runtime import load_checkpoint, amp_context, runtime
 
 
 def nearest(values, dictionary):

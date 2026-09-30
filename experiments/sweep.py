@@ -25,7 +25,7 @@ def main() -> None:
     rows = []
     for index, rate_weight in enumerate(args.lambdas):
         run_dir = root / f"rate_{index:02d}"
-        command = [sys.executable, str(Path(__file__).with_name("train.py")),
+        command = [sys.executable, "-m", "experiments.train",
                    "--manifest", args.manifest, "--shards-dir", args.shards_dir,
                    "--output-dir", str(run_dir), "--lambda-rate", str(rate_weight)]
         if args.extra:

@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 import torch
 
-from eeg_dataset import EEGWindowDataset
-from experiment_utils import read_manifest
+from utils.eeg_dataset import EEGWindowDataset
+from utils.experiment_utils import read_manifest
 
 
 def channel_names(value, n_channels: int) -> list[str]:

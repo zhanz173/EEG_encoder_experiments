@@ -5,7 +5,7 @@ import math
 import torch
 from torch import nn
 from torch.nn import functional as F
-from model import EEGRateDistortionAE
+from models.model import EEGRateDistortionAE
 
 
 class LogisticPrior(nn.Module):

@@ -23,8 +23,8 @@ its true robust scale.
 
 Command line
 ------------
-    python preprocessing_pipeline.py scan --manifest ... --shards-dir ... --output-dir ...
-    python preprocessing_pipeline.py selftest
+    python -m utils.preprocessing_pipeline scan --manifest ... --shards-dir ... --output-dir ...
+    python -m utils.preprocessing_pipeline selftest
 """
 
 from __future__ import annotations

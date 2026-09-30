@@ -3,8 +3,8 @@ import argparse
 import json
 import time
 import torch
-from spatial_model import make_model, distortion
-from train_spatial import amp_context, runtime
+from models.spatial_model import make_model, distortion
+from utils.spatial_runtime import amp_context, runtime
 
 
 def main():

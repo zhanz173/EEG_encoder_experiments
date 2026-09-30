@@ -12,7 +12,7 @@ import queue
 import subprocess
 import sys
 import threading
-from spatial_data import write_json
+from utils.spatial_data import write_json
 
 
 def main():
@@ -41,14 +41,14 @@ def main():
             p.error(f"Duplicate {name} would overwrite jobs")
     if min(args.lambdas) <= 0:
         p.error("Positive lambdas required")
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     out = Path(args.output_dir).resolve()
     jobs = []
     for arch in args.architectures:
         for rank, lam, seed in itertools.product(args.ranks if arch == "factorized" else [8], args.lambdas, args.seeds):
             name = f"{arch}_k{rank}_lambda{lam:g}_seed{seed}"
             dest = out/name
-            cmd = [sys.executable, str(root/"train_spatial.py"), "--prepared", str(Path(args.prepared).resolve()),
+            cmd = [sys.executable, "-m", "experiments.train_spatial", "--prepared", str(Path(args.prepared).resolve()),
                    "--shards-dir", str(Path(args.shards_dir).resolve()), "--output-dir", str(dest),
                    "--architecture", arch, "--rank", str(rank), "--lambda-rate", str(lam), "--seed", str(seed),
                    "--device", "cuda:0", "--batch-size", str(args.batch_size), "--workers", str(args.workers),
@@ -90,7 +90,7 @@ def main():
                         cmd.append("--resume")
                     commands.append(cmd)
                 if args.posthoc:
-                    base = [sys.executable, str(root/"posthoc_spatial.py")]
+                    base = [sys.executable, "-m", "experiments.posthoc_spatial"]
                     common = ["--prepared", str(Path(args.prepared).resolve()), "--shards-dir", str(Path(args.shards_dir).resolve()),
                               "--device", "cuda:0", "--batch-size", str(args.batch_size), "--workers", str(args.workers), "--threads", str(args.threads)]
                     if not (dest/"dictionary/dictionary.pt").exists():

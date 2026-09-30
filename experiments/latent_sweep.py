@@ -9,12 +9,12 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from band_metrics import BANDS, evaluate_continuous_ae, evaluate_wave_nmse
-from eeg_dataset import EEGWindowDataset
-from experiment_utils import (
+from utils.band_metrics import BANDS, evaluate_continuous_ae, evaluate_wave_nmse
+from utils.eeg_dataset import EEGWindowDataset
+from utils.experiment_utils import (
     estimate_input_scale, make_loader, read_manifest, seed_everything, split_records,
 )
-from model import EEGContinuousAE, waveform_nmse
+from models.model import EEGContinuousAE, waveform_nmse
 
 
 def parse_args() -> argparse.Namespace:

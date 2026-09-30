@@ -374,7 +374,7 @@ class CleanEEGWindowDataset(EEGWindowDataset):
         eval_start_sec: float = 0.0,
         drop_suspect_recordings: bool = False,
     ) -> None:
-        from preprocessing_pipeline import QCConfig, WindowPreprocessor
+        from utils.preprocessing_pipeline import QCConfig, WindowPreprocessor
 
         qc_dir = Path(qc_dir)
         config_path = qc_dir / "qc_config.json"

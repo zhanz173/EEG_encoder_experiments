@@ -10,8 +10,8 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-from eeg_dataset import EEGWindowDataset
-from model import waveform_huber
+from utils.eeg_dataset import EEGWindowDataset
+from models.model import waveform_huber
 
 
 def read_manifest(path: str | Path, sfreq: float, n_channels: int, window_sec: float) -> pd.DataFrame:
@@ -133,11 +133,21 @@ def evaluate(model, loader: DataLoader, scale: float, device: torch.device,
         "log_psd_mae", "spatial_corr_error", "line_length_rel_error", "peak_rel_error",
     )}
     n_windows = 0
+    component_totals = dict(slow_huber=0.0, slow_error=0.0, slow_bits=0.0, fast_bits=0.0)
+    has_components = hasattr(model, "forward_components")
     for batch_idx, batch in enumerate(loader):
         if max_batches and batch_idx >= max_batches:
             break
         x = batch["x"].to(device, non_blocking=True) / scale
-        y, rate = model(x)
+        if has_components:
+            parts = model.forward_components(x)
+            y, rate = parts["reconstruction"], parts["rate"]
+            component_totals["slow_huber"] += waveform_huber(x, parts["slow"], delta=huber_delta).item() * x.shape[0]
+            component_totals["slow_error"] += (x - parts["slow"]).square().sum().item()
+            component_totals["slow_bits"] += parts["slow_rate"].item() * x.numel()
+            component_totals["fast_bits"] += parts["fast_rate"].item() * x.numel()
+        else:
+            y, rate = model(x)
         count = x.shape[0]
         totals["squared_error"] += (x - y).square().sum().item()
         totals["signal_energy"] += x.square().sum().item()
@@ -157,7 +167,7 @@ def evaluate(model, loader: DataLoader, scale: float, device: torch.device,
         raise ValueError("No evaluation windows")
     nmse = totals["squared_error"] / max(totals["signal_energy"], 1e-8)
     estimated_rate = totals["estimated_bits"] / totals["channel_samples"]
-    return {
+    result = {
         "n_windows": n_windows,
         "nmse": nmse,
         "huber": totals["huber"] / n_windows,
@@ -169,3 +179,10 @@ def evaluate(model, loader: DataLoader, scale: float, device: torch.device,
         "line_length_rel_error": totals["line_length_rel_error"] / n_windows,
         "peak_rel_error": totals["peak_rel_error"] / n_windows,
     }
+    if has_components:
+        slow_nmse = component_totals["slow_error"] / max(totals["signal_energy"], 1e-8)
+        result.update(slow_huber=component_totals["slow_huber"] / n_windows,
+                      slow_nmse=slow_nmse, fast_nmse_gain=slow_nmse - nmse,
+                      slow_estimated_bits_per_channel_sample=component_totals["slow_bits"] / totals["channel_samples"],
+                      fast_estimated_bits_per_channel_sample=component_totals["fast_bits"] / totals["channel_samples"])
+    return result

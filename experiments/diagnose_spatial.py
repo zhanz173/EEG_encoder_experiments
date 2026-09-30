@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from spatial_data import SpatialDataset, loader, fingerprint, write_json
-from train_spatial import load_checkpoint, amp_context, runtime
+from utils.spatial_data import SpatialDataset, loader, fingerprint, write_json
+from utils.spatial_runtime import load_checkpoint, amp_context, runtime
 
 
 def projectors(a, rtol=1e-5):

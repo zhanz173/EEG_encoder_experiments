@@ -3,10 +3,10 @@ import unittest
 import numpy as np
 import pandas as pd
 import torch
-from spatial_model import SpatialFactorAE, LogisticPrior, distortion
-from posthoc_spatial import nearest, held_assignments, code_bits, coding, counts
-from spatial_metrics import sequence_stats, Metrics
-from diagnose_spatial import projectors
+from models.spatial_model import SpatialFactorAE, LogisticPrior, distortion
+from experiments.posthoc_spatial import nearest, held_assignments, code_bits, coding, counts
+from utils.spatial_metrics import sequence_stats, Metrics
+from experiments.diagnose_spatial import projectors
 
 
 class SpatialTests(unittest.TestCase):

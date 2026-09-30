@@ -10,7 +10,7 @@ Work is chunked and resumable. Each chunk writes its own part files under
 spreads chunks over processes. The final step concatenates the parts into the
 four tables plus a summary.
 
-    python build_qc_cache.py \
+    python -m experiments.build_qc_cache \
         --manifest H:/EEG/FHA/Resting/preprocessed/manifests/recordings.parquet \
         --shards-dir H:/EEG/FHA/Resting/preprocessed/shards \
         --output-dir H:/EEG/FHA/Resting/preprocessed/qc \
@@ -32,7 +32,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from preprocessing_pipeline import (
+from utils.preprocessing_pipeline import (
     ACCEPT, TABLE_STEMS, QCConfig, load_bad_channels, load_manifest, process_recording,
     summarize_scan, write_qc_tables,
 )

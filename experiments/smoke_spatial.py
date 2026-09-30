@@ -18,7 +18,7 @@ def main():
     p.add_argument("--qc", action="store_true", help="Exercise accepted-window QC and raw-unit interpolation")
     p.add_argument("--verify-resume", action="store_true", help="Compare resumed and uninterrupted factorized training")
     args = p.parse_args()
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     out = Path(args.output_dir or root/"runs"/f"spatial_smoke_{datetime.now():%Y%m%d_%H%M%S}").resolve()
     if out.exists():
         raise ValueError("Smoke output must be a new directory")
@@ -52,7 +52,7 @@ def main():
     env = os.environ.copy()
     env.update(OMP_NUM_THREADS="2", MKL_NUM_THREADS="2")
     def run(script, *options):
-        command = [sys.executable, str(root/script), *map(str, options)]
+        command = [sys.executable, "-m", "experiments." + Path(script).stem, *map(str, options)]
         print("RUN", " ".join(command), flush=True)
         subprocess.run(command, cwd=root, env=env, check=True)
     run("prepare_spatial.py", "--manifest", out/"manifest.csv", "--metadata", out/"metadata.csv",
@@ -61,7 +61,7 @@ def main():
     prepared_records = pd.read_csv(out/"prepared/records.csv")
     assert prepared_records.groupby("patient_id").split.nunique().max() == 1
     if args.qc:
-        from spatial_data import SpatialDataset
+        from utils.spatial_data import SpatialDataset
         ds = SpatialDataset(out/"prepared", out, "train")
         item = ds[0]
         with h5py.File(out/"synthetic.h5", "r") as f:

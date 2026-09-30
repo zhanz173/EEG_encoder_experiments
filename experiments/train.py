@@ -9,16 +9,17 @@ from pathlib import Path
 
 import torch
 
-from eeg_dataset import EEGWindowDataset
-from experiment_utils import (
+from utils.eeg_dataset import EEGWindowDataset
+from utils.experiment_utils import (
     estimate_input_scale, evaluate, make_loader, read_manifest, seed_everything,
     split_records,
 )
-from model import EEGRateDistortionAE, waveform_huber
+from models.model import waveform_huber
+from models.temporal_model import build_rate_model
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+def parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--manifest", required=True, help="CSV or Parquet recordings manifest")
     parser.add_argument("--shards-dir", required=True)
     parser.add_argument("--output-dir", default="runs/quick")
@@ -35,6 +36,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-val-recordings", type=int, default=64)
     parser.add_argument("--max-test-recordings", type=int, default=64)
     parser.add_argument("--latent-dim", type=int, default=64)
+    parser.add_argument("--architecture", choices=["baseline", "slow-fast"], default="baseline")
+    parser.add_argument("--channel-mode", choices=["joint", "independent"], default="joint",
+                        help="Slow-fast channel handling; baseline always uses joint channels")
+    parser.add_argument("--slow-dim", type=int, default=4, help="Slow features, joint or per channel according to channel-mode")
+    parser.add_argument("--fast-dim", type=int, default=4, help="Fast features, joint or per channel according to channel-mode")
+    parser.add_argument("--slow-stride", type=int, default=64)
+    parser.add_argument("--fast-stride", type=int, default=16)
+    parser.add_argument("--temporal-width", type=int, default=32)
+    parser.add_argument("--slow-loss-weight", type=float, default=0.25,
+                        help="Auxiliary slow-only Huber weight for slow-fast models")
     parser.add_argument("--lambda-rate", type=float, default=0.01)
     parser.add_argument("--huber-delta", type=float, default=1.0,
                         help="Huber transition in units of each input window's RMS")
@@ -50,15 +61,25 @@ def parse_args() -> argparse.Namespace:
                         help="0 means the entire selected training subset")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
-    args = parser.parse_args()
-    if args.lambda_rate < 0 or args.epochs < 1 or args.batch_size < 1:
+    args = parser.parse_args(argv)
+    if not math.isfinite(args.lambda_rate) or args.lambda_rate < 0 or args.epochs < 1 or args.batch_size < 1:
         parser.error("lambda-rate must be nonnegative; epochs and batch-size must be positive")
     if args.early_stop_patience < 0 or args.early_stop_min_delta < 0 or args.eval_start_sec < 0:
         parser.error("early-stop-patience, early-stop-min-delta, and eval-start-sec must be nonnegative")
     if not math.isfinite(args.huber_delta) or args.huber_delta <= 0:
         parser.error("huber-delta must be positive and finite")
-    if round(args.window_sec * args.sfreq) % 16:
+    if args.architecture == "baseline" and round(args.window_sec * args.sfreq) % 16:
         parser.error("window-sec × sfreq must be divisible by 16")
+    if not math.isfinite(args.slow_loss_weight) or args.slow_loss_weight < 0:
+        parser.error("slow-loss-weight must be finite and nonnegative")
+    if args.architecture == "slow-fast":
+        if (min(args.slow_dim, args.fast_dim, args.temporal_width) < 1
+                or args.temporal_width % 8
+                or any(s < 2 or s & (s - 1) for s in (args.slow_stride, args.fast_stride))
+                or args.slow_stride <= args.fast_stride):
+            parser.error("Positive dimensions, width divisible by 8, and power-of-two strides slow > fast >= 2 required")
+        if round(args.window_sec * args.sfreq) < args.slow_stride or round(args.window_sec * args.sfreq) % args.slow_stride:
+            parser.error("window-sec × sfreq must be a positive multiple of slow-stride")
     return args
 
 
@@ -102,7 +123,13 @@ def main() -> None:
     val_loader = make_loader(val_ds, args.batch_size, args.num_workers, False)
     test_loader = make_loader(test_ds, args.batch_size, args.num_workers, False)
 
-    model = EEGRateDistortionAE(args.channels, args.latent_dim).to(device)
+    model_config = {"n_channels": args.channels, "latent_dim": args.latent_dim}
+    if args.architecture == "slow-fast":
+        model_config = dict(architecture="slow-fast", n_channels=args.channels,
+                            slow_dim=args.slow_dim, fast_dim=args.fast_dim,
+                            slow_stride=args.slow_stride, fast_stride=args.fast_stride,
+                            width=args.temporal_width, channel_mode=args.channel_mode)
+    model = build_rate_model(model_config).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     split_ids = {key: value["sha256_id"].astype(str).tolist() for key, value in splits.items()}
     best_score = float("inf")
@@ -121,9 +148,15 @@ def main() -> None:
         for batch in train_loader:
             x = batch["x"].to(device, non_blocking=True) / scale
             optimizer.zero_grad(set_to_none=True)
-            reconstructed, rate = model(x)
+            slow_loss = x.new_zeros(())
+            if args.architecture == "slow-fast":
+                components = model.forward_components(x)
+                reconstructed, rate = components["reconstruction"], components["rate"]
+                slow_loss = waveform_huber(x, components["slow"], delta=args.huber_delta)
+            else:
+                reconstructed, rate = model(x)
             distortion = waveform_huber(x, reconstructed, delta=args.huber_delta)
-            loss = distortion + args.lambda_rate * rate
+            loss = distortion + args.lambda_rate * rate + args.slow_loss_weight * slow_loss
             if not torch.isfinite(loss):
                 raise FloatingPointError("Non-finite training loss")
             loss.backward()
@@ -135,6 +168,8 @@ def main() -> None:
                 break
         validation = evaluate(model, val_loader, scale, device, huber_delta=args.huber_delta)
         score = validation["huber"] + args.lambda_rate * validation["estimated_bits_per_channel_sample"]
+        if args.architecture == "slow-fast":
+            score += args.slow_loss_weight * validation["slow_huber"]
         if not math.isfinite(score):
             raise FloatingPointError("Non-finite validation objective")
         improved_checkpoint = score < best_score
@@ -156,8 +191,7 @@ def main() -> None:
         print(json.dumps(row))
         if improved_checkpoint:
             checkpoint = {
-                "model": model.state_dict(), "model_config": {"n_channels": args.channels,
-                                                               "latent_dim": args.latent_dim},
+                "model": model.state_dict(), "model_config": model_config,
                 "config": config, "scale": scale, "split_ids": split_ids, "epoch": epoch,
             }
             temp_path = output_dir / "best.tmp"

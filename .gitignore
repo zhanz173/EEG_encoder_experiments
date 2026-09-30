@@ -5,5 +5,9 @@ scripts/*
 
 ## ignore all markdown notes
 *.md
+
+# except for the following files
+!PREPROCESSING.md
+!TEMPORAL_EXPERIMENT.md
 !SPATIAL_EXPERIMENT.md
 !notes/spatial_factorization_experiment.md

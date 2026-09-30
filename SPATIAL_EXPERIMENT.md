@@ -10,13 +10,13 @@ Install a stable CUDA-enabled PyTorch build supporting your GPUs using the offic
 
 ```powershell
 python -m pip install -r requirements-spatial.txt
-python benchmark_spatial.py --device cuda:0 --batch-size 64
-python benchmark_spatial.py --device cuda:1 --batch-size 64
+python -m experiments.benchmark_spatial --device cuda:0 --batch-size 64
+python -m experiments.benchmark_spatial --device cuda:1 --batch-size 64
 ```
 
 The benchmark exercises actual forward/backward kernels, BF16, and the optimizer. It also reports peak allocated memory and synthetic throughput. Defaults are **BF16, batch 64 per job, four loader workers per job**, pinned transfers, prefetching, persistent workers, TF32, cuDNN benchmarking, and fused AdamW on CUDA. Entropy likelihood, distortion, and bilinear synthesis use float32. FP16 with gradient scaling and FP32 are supported. BF16 is deliberately the initial work-PC setting, not a measured optimum.
 
-Tune batch 32/64/128 on the work machine using this benchmark; use real training logs to account for disk I/O. Two jobs reading the same HDD can be I/O-bound: prefer local SSD shards or lower workers to 2 per job. Each worker limits HDF5 file handles to eight and limits per-file chunk cache. Optional `train_spatial.py --compile` is available, but is off by default for portable Windows execution. CPU smoke tests use small batches and do not change workstation defaults.
+Tune batch 32/64/128 on the work machine using this benchmark; use real training logs to account for disk I/O. Two jobs reading the same HDD can be I/O-bound: prefer local SSD shards or lower workers to 2 per job. Each worker limits HDF5 file handles to eight and limits per-file chunk cache. Optional `python -m experiments.train_spatial --compile` is available, but is off by default for portable Windows execution. CPU smoke tests use small batches and do not change workstation defaults.
 
 ## 1. Prepare data once
 
@@ -28,12 +28,12 @@ $metadata = 'H:\EEG\FHA\Resting\preprocessed\EEG_Metadata.csv'
 $shards = 'H:\EEG\FHA\Resting\preprocessed\shards'
 $qc = 'H:\EEG\FHA\Resting\preprocessed\qc'
 
-python prepare_spatial.py --manifest $manifest --metadata $metadata `
+python -m experiments.prepare_spatial --manifest $manifest --metadata $metadata `
   --shards-dir $shards --qc-dir $qc --output-dir runs/spatial_data `
   --train-recordings 2560 --val-recordings 256 --test-recordings 256
 ```
 
-Create the QC cache with the existing `build_qc_cache.py` if needed. The preparer checks cache window length and uses accepted windows and masked events. It **does not apply per-channel normalization**: interpolation occurs in source units, then every channel shares one training-derived scale. This preserves spatial amplitude ratios. Both training and evaluation exclude the first 16 seconds. Training samples accepted grid windows; final evaluation uses all accepted windows.
+Create the QC cache with the existing `experiments/build_qc_cache.py` if needed. The preparer checks cache window length and uses accepted windows and masked events. It **does not apply per-channel normalization**: interpolation occurs in source units, then every channel shares one training-derived scale. This preserves spatial amplitude ratios. Both training and evaluation exclude the first 16 seconds. Training samples accepted grid windows; final evaluation uses all accepted windows.
 
 Missing patient mappings are excluded, conflicting mappings are rejected, and selected patient groups never overlap. The default metadata key is `Hashed_PatientURN`; override column names explicitly when needed. A separate raw-data run requires `--allow-no-qc` and omission of `--qc-dir`. Raw and QC runs must use different output/prepared directories.
 
@@ -42,14 +42,14 @@ For a smaller clinical pilot use 512/128/128 recordings. Preparation fails if QC
 ## 2. Run the four-model pilot across both GPUs
 
 ```powershell
-python sweep_spatial.py --prepared runs/spatial_data --shards-dir $shards `
+python -m experiments.sweep_spatial --prepared runs/spatial_data --shards-dir $shards `
   --output-dir runs/spatial_pilot --gpus 0 1 --lambdas 0.02 0.1 --seeds 0 `
   --ranks 8 --epochs 60 --batch-size 64 --workers 4 --posthoc
 ```
 
 This schedules a baseline and rank-8 factorized model at each lambda. The two lambda values are **starting points to calibrate on validation**, not guaranteed matched-rate points. Use `--dry-run` to print commands without launching. Each GPU slot runs training, train-only dictionary fitting, and validation post-hoc evaluation before taking another job. Logs are next to job directories; `queue_status.json` records failures without discarding successful jobs.
 
-Add `--resume` to the exact same sweep command after interruption. Training saves atomic `last.pt` (optimizer/scaler included) and `best.pt`. Completed stages are skipped. Interrupted post-hoc stages are not partially resumed: preserve their incomplete directory under another name and rerun that stage into a fresh directory. Do not silently mix stage outputs. Resume checks training settings and prepared data identity. To change the sweep or extend epoch counts through the scheduler, use a new sweep directory; individual `train_spatial.py --resume --epochs ...` supports extending a run.
+Add `--resume` to the exact same sweep command after interruption. Training saves atomic `last.pt` (optimizer/scaler included) and `best.pt`. Completed stages are skipped. Interrupted post-hoc stages are not partially resumed: preserve their incomplete directory under another name and rerun that stage into a fresh directory. Do not silently mix stage outputs. Resume checks training settings and prepared data identity. To change the sweep or extend epoch counts through the scheduler, use a new sweep directory; individual `python -m experiments.train_spatial --resume --epochs ...` supports extending a run.
 
 Model defaults:
 
@@ -72,7 +72,7 @@ The spatial branch is a patch MLP with no overlap across spatial frames. The tem
 For an individual run:
 
 ```powershell
-python train_spatial.py --prepared runs/spatial_data --shards-dir $shards `
+python -m experiments.train_spatial --prepared runs/spatial_data --shards-dir $shards `
   --output-dir runs/spatial_one --architecture factorized --rank 8 `
   --lambda-rate 0.05 --device cuda:0 --batch-size 64 --workers 4
 ```
@@ -82,11 +82,11 @@ Additional flags include `--spatial-stride`, `--spatial-dim`, `--temporal-dim`, 
 ## 3. Dictionary experiments independently
 
 ```powershell
-python posthoc_spatial.py fit --checkpoint runs/spatial_one/best.pt `
+python -m experiments.posthoc_spatial fit --checkpoint runs/spatial_one/best.pt `
   --prepared runs/spatial_data --shards-dir $shards --output-dir runs/spatial_one/dictionary `
   --sizes 1 4 8 16 32 64 --holds 1 2 4 8 16 32 --device cuda:0
 
-python posthoc_spatial.py evaluate --bundle runs/spatial_one/dictionary/dictionary.pt `
+python -m experiments.posthoc_spatial evaluate --bundle runs/spatial_one/dictionary/dictionary.pt `
   --prepared runs/spatial_data --shards-dir $shards --output-dir runs/spatial_one/posthoc_val `
   --split val --device cuda:0
 ```
@@ -107,7 +107,7 @@ Baseline checkpoints use the same post-hoc interface for generic latent-vector d
 ## 4. Inspect validation, then lock test choices
 
 ```powershell
-python summarize_spatial.py --root runs/spatial_pilot --output-dir runs/spatial_pilot_summary
+python -m experiments.summarize_spatial --root runs/spatial_pilot --output-dir runs/spatial_pilot_summary
 ```
 
 Outputs include total rate-distortion, hold-interval, and dictionary-size band-error figures; CSVs retain each model/split separately. `validation_candidates.json` lists the smallest validation nearest-matrix dictionary within proposed tolerances (+0.01 waveform NMSE, +0.03 per-band NMSE). This is an engineering candidate, not clinical validation. Hold intervals are inspected separately. Test data never select candidates.
@@ -115,7 +115,7 @@ Outputs include total rate-distortion, hold-interval, and dictionary-size band-e
 After choosing cases on validation:
 
 ```powershell
-python posthoc_spatial.py evaluate --bundle runs/spatial_one/dictionary/dictionary.pt `
+python -m experiments.posthoc_spatial evaluate --bundle runs/spatial_one/dictionary/dictionary.pt `
   --prepared runs/spatial_data --shards-dir $shards --output-dir runs/spatial_one/posthoc_test `
   --split test --cases m16_nearest m16_hold4 --device cuda:0
 ```
@@ -128,8 +128,8 @@ Every evaluated case saves recording/patient metrics, paired patient bootstrap i
 
 ```powershell
 python -m unittest discover -s tests -p "test_spatial*.py" -v
-python smoke_spatial.py
-python smoke_spatial.py --workers 1 --qc --verify-resume
+python -m experiments.smoke_spatial
+python -m experiments.smoke_spatial --workers 1 --qc --verify-resume
 ```
 
 Smoke tests generate small synthetic HDF5 recordings, prepare patient splits, train both architectures on CPU, fit dictionaries, evaluate replacements, and build figures. They validate execution and invariants, not reconstruction quality or convergence.
@@ -137,7 +137,7 @@ Smoke tests generate small synthetic HDF5 recordings, prepare patient splits, tr
 The implemented primary experiment clusters ordered spatial matrices in the learned codec coordinates. It does not solve factor-rotation ambiguity or recover clinical microstates. The optional subspace diagnostic is separate from the compression result. Actual entropy coding, temporal re-encoding after basis alignment, clinically labeled transient detection, and fully parameter-matched architecture sweeps are follow-ups.
 
 ```powershell
-python diagnose_spatial.py --checkpoint runs/spatial_one/best.pt `
+python -m experiments.diagnose_spatial --checkpoint runs/spatial_one/best.pt `
   --prepared runs/spatial_data --shards-dir $shards --output-dir runs/spatial_one/subspaces `
   --split val --device cuda:0
 ```

@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from experiment_utils import read_manifest, split_records
-from spatial_data import SpatialDataset, write_json, fingerprint
+from utils.experiment_utils import read_manifest, split_records
+from utils.spatial_data import SpatialDataset, write_json, fingerprint
 
 
 def main():

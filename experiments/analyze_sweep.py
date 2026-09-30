@@ -18,9 +18,9 @@ import numpy as np
 import pandas as pd
 import torch
 
-from eeg_dataset import EEGWindowDataset
-from experiment_utils import read_manifest
-from model import EEGRateDistortionAE
+from utils.eeg_dataset import EEGWindowDataset
+from utils.experiment_utils import read_manifest
+from models.model import EEGRateDistortionAE
 
 
 BANDS = {
