@@ -5,3 +5,5 @@ scripts/*
 
 ## ignore all markdown notes
 *.md
+!SPATIAL_EXPERIMENT.md
+!notes/spatial_factorization_experiment.md
